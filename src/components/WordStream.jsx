@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef } from "react";
 import StreamLine from "@/components/StreamLine";
+import FileStatusBar from "@/components/FileStatusBar";
 
-export default function WordStream({ lines }) {
+export default function WordStream({ lines, file }) {
   const scrollRef = useRef(null);
   const prevHeight = useRef(0);
 
@@ -14,15 +15,18 @@ export default function WordStream({ lines }) {
   }, [lines]);
 
   return (
-    <div
-      ref={scrollRef}
-      className="feed-scroll h-screen w-full overflow-y-auto bg-background px-4 py-3 sm:px-6 [mask-image:linear-gradient(to_bottom,black_72%,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black_72%,transparent)]"
-    >
-      {lines.length === 0
-        ? null
-        : lines.map((line, i) => (
-            <StreamLine key={line.id} line={line} newest={i === 0} />
-          ))}
+    <div className="flex h-screen w-full flex-col bg-background">
+      <FileStatusBar file={file} />
+      <div
+        ref={scrollRef}
+        className="feed-scroll flex-1 overflow-y-auto px-4 py-3 sm:px-6 [mask-image:linear-gradient(to_bottom,black_72%,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black_72%,transparent)]"
+      >
+        {lines.length === 0
+          ? null
+          : lines.map((line, i) => (
+              <StreamLine key={line.id} line={line} newest={i === 0} />
+            ))}
+      </div>
     </div>
   );
 }

@@ -18,11 +18,11 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { lines } = useWordStream();
+  const { lines, file } = useWordStream();
 
   return (
     <div className="min-h-screen bg-background">
-      <WordStream lines={lines} />
+      <WordStream lines={lines} file={file} />
     </div>
   );
 }
