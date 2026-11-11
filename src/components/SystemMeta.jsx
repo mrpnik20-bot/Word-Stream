@@ -2,7 +2,7 @@ import { WORDS } from "@/lib/wordBank";
 
 const rows = [
   ["Engine", "local agent"],
-  ["Interval", "1000 ms"],
+  ["Rate", "100 lines / sec"],
   ["Per line", "12 words"],
   ["Bank", `${WORDS.length.toLocaleString("en-US")} words`],
 ];

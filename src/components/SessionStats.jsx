@@ -11,7 +11,7 @@ export default function SessionStats({ stats }) {
   const items = [
     { label: "Lines", value: stats.lines.toLocaleString("en-US") },
     { label: "Words", value: stats.words.toLocaleString("en-US") },
-    { label: "Run time", value: formatRunTime(stats.lines) },
+    { label: "Run time", value: formatRunTime(stats.seconds) },
   ];
 
   return (

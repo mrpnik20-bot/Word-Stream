@@ -1,4 +1,4 @@
-const facts = ["12 words per line", "1 line per second", "zero repeated lines"];
+const facts = ["12 words per line", "100 lines per second", "zero repeated lines"];
 
 export default function StreamHero() {
   return (
@@ -8,12 +8,12 @@ export default function StreamHero() {
       </p>
 
       <h1 className="mt-5 max-w-3xl font-heading text-[2.1rem] leading-[1.06] tracking-[-0.02em] text-foreground sm:text-6xl">
-        Twelve random words,
-        <br className="hidden sm:block" /> every second.
+        A hundred lines,
+        <br className="hidden sm:block" /> twelve words each.
       </h1>
 
       <p className="mt-5 max-w-xl font-serif text-[15px] leading-relaxed text-muted-foreground sm:text-base">
-        প্রতি সেকেন্ডে ১২টি র‍্যান্ডম ইংরেজি শব্দ নিয়ে নতুন লাইন তৈরি হয়। কোনো লাইন কখনো পুনরাবৃত্তি হয় না —
+        প্রতি সেকেন্ডে ১০০টি লাইন, প্রতিটিতে ১২টি র‍্যান্ডম ইংরেজি শব্দ। কোনো লাইন কখনো পুনরাবৃত্তি হয় না —
         শব্দ পুনরাবৃত্তি হতে পারে।
       </p>
 

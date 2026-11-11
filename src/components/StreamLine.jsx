@@ -1,12 +1,8 @@
-export default function StreamLine({ line, position }) {
-  const newest = position === 0;
-  const opacity = Math.max(0.3, 1 - position * 0.045);
+import { memo } from "react";
 
+function StreamLine({ line, newest }) {
   return (
-    <div
-      className="line-in relative border-b border-border/70 py-3 last:border-b-0"
-      style={{ opacity }}
-    >
+    <div className="line-in relative border-b border-border/70 py-3 last:border-b-0">
       {newest && <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-accent" />}
 
       <div className="flex items-start gap-3 pl-2 sm:gap-5 sm:pl-3">
@@ -37,3 +33,7 @@ export default function StreamLine({ line, position }) {
     </div>
   );
 }
+
+// Stable line objects + a boolean `newest` flag let unchanged lines skip re-render
+// even while 100 lines/sec flow through the feed.
+export default memo(StreamLine);
