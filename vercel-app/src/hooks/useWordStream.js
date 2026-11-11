@@ -1,55 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { WORDS_PER_LINE, createLineGenerator } from "@/lib/lineGenerator";
+import { useEffect, useState } from "react";
 
 const MAX_VISIBLE_LINES = 60;
-const TICK_MS = 100;
-const LINES_PER_TICK = 10; // 10 ticks/sec * 10 lines = 100 lines/sec
-const SEED_LINES = 12;
 
-export function useWordStream(running = false) {
-  const [generator] = useState(() => createLineGenerator());
+/**
+ * Live word stream from the Vercel SSE endpoint /api/stream.
+ * The server writes 100 lines/sec; this hook catches every batch and shows
+ * the newest first. Duplicate lines are dropped so a reconnect never repeats.
+ */
+export function useWordStream() {
   const [lines, setLines] = useState([]);
-  const [stats, setStats] = useState({ lines: 0, words: 0, seconds: 0 });
-  const seeded = useRef(false);
 
-  const push = useCallback(
-    (count = 1) => {
-      const fresh = [];
-      for (let i = 0; i < count; i += 1) fresh.push(generator.next());
-
-      setLines((prev) => fresh.reverse().concat(prev).slice(0, MAX_VISIBLE_LINES));
-      setStats((prev) => ({
-        lines: prev.lines + count,
-        words: prev.words + count * WORDS_PER_LINE,
-        seconds: prev.seconds,
-      }));
-    },
-    [generator],
-  );
-
-  // First render is shared with the server; the opening lines arrive once running starts.
   useEffect(() => {
-    if (!running || seeded.current) return;
-    seeded.current = true;
-    push(SEED_LINES);
-  }, [push, running]);
+    const seen = new Set();
+    const es = new EventSource("/api/stream");
 
-  // 100 lines/sec, emitted in 10-line bursts so the feed stays smooth on mobile.
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(() => push(LINES_PER_TICK), TICK_MS);
-    return () => clearInterval(timer);
-  }, [running, push]);
+    es.addEventListener("message", (e) => {
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (msg.type !== "lines" || !Array.isArray(msg.lines)) return;
 
-  // Independent run-time clock so it stays accurate at any rate.
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(
-      () => setStats((prev) => ({ ...prev, seconds: prev.seconds + 1 })),
-      1000,
-    );
-    return () => clearInterval(timer);
-  }, [running]);
+      const fresh = msg.lines.filter((line) => {
+        const key = line.words.join(" ");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (fresh.length === 0) return;
 
-  return { lines, stats };
+      setLines((prev) => fresh.slice().reverse().concat(prev).slice(0, MAX_VISIBLE_LINES));
+    });
+
+    return () => es.close();
+  }, []);
+
+  return { lines };
 }
