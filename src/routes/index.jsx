@@ -17,7 +17,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { lines } = useWordStream();
+  const { lines } = useWordStream(false);
 
   return (
     <div className="min-h-screen bg-background">

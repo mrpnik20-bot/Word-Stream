@@ -6,10 +6,9 @@ const TICK_MS = 100;
 const LINES_PER_TICK = 10; // 10 ticks/sec * 10 lines = 100 lines/sec
 const SEED_LINES = 12;
 
-export function useWordStream() {
+export function useWordStream(running = false) {
   const [generator] = useState(() => createLineGenerator());
   const [lines, setLines] = useState([]);
-  const [running, setRunning] = useState(false);
   const [stats, setStats] = useState({ lines: 0, words: 0, seconds: 0 });
   const seeded = useRef(false);
 
@@ -52,12 +51,5 @@ export function useWordStream() {
     return () => clearInterval(timer);
   }, [running]);
 
-  const toggle = useCallback(() => setRunning((prev) => !prev), []);
-
-  const clear = useCallback(() => {
-    setLines([]);
-    setStats({ lines: 0, words: 0, seconds: 0 });
-  }, []);
-
-  return { lines, running, stats, toggle, clear };
+  return { lines, stats };
 }
