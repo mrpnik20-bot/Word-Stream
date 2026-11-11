@@ -9,7 +9,7 @@ const SEED_LINES = 12;
 export function useWordStream() {
   const [generator] = useState(() => createLineGenerator());
   const [lines, setLines] = useState([]);
-  const [running, setRunning] = useState(true);
+  const [running, setRunning] = useState(false);
   const [stats, setStats] = useState({ lines: 0, words: 0, seconds: 0 });
   const seeded = useRef(false);
 
@@ -28,12 +28,12 @@ export function useWordStream() {
     [generator],
   );
 
-  // First render is shared with the server; the opening lines arrive after mount.
+  // First render is shared with the server; the opening lines arrive once running starts.
   useEffect(() => {
-    if (seeded.current) return;
+    if (!running || seeded.current) return;
     seeded.current = true;
     push(SEED_LINES);
-  }, [push]);
+  }, [push, running]);
 
   // 100 lines/sec, emitted in 10-line bursts so the feed stays smooth on mobile.
   useEffect(() => {
