@@ -3,6 +3,7 @@ import { useWordStream } from "@/hooks/useWordStream";
 import WordStream from "@/components/WordStream";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Lexical Chronos — 12 random words every second" },
