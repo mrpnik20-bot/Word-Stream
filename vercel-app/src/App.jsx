@@ -2,7 +2,7 @@ import { useWordStream } from "@/hooks/useWordStream";
 import WordStream from "@/components/WordStream";
 
 export default function App() {
-  const { lines } = useWordStream(false);
+  const { lines } = useWordStream(true);
 
   return (
     <div className="min-h-screen bg-background">
