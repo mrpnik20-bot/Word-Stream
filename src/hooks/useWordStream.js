@@ -1,55 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { WORDS_PER_LINE, createLineGenerator } from "@/lib/lineGenerator";
+import { useEffect, useState } from "react";
+import { base44 } from "@/api/base44Client";
 
 const MAX_VISIBLE_LINES = 60;
-const TICK_MS = 100;
-const LINES_PER_TICK = 10; // 10 ticks/sec * 10 lines = 100 lines/sec
-const SEED_LINES = 12;
+const ROOM_ID = "main";
 
-export function useWordStream(running = false) {
-  const [generator] = useState(() => createLineGenerator());
+/**
+ * Live word stream backed by the WordStream actor. Every client connected to
+ * the same room receives the exact same lines in real time — the site and any
+ * other app tapping the stream see one shared feed.
+ */
+export function useWordStream() {
   const [lines, setLines] = useState([]);
-  const [stats, setStats] = useState({ lines: 0, words: 0, seconds: 0 });
-  const seeded = useRef(false);
 
-  const push = useCallback(
-    (count = 1) => {
-      const fresh = [];
-      for (let i = 0; i < count; i += 1) fresh.push(generator.next());
-
-      setLines((prev) => fresh.reverse().concat(prev).slice(0, MAX_VISIBLE_LINES));
-      setStats((prev) => ({
-        lines: prev.lines + count,
-        words: prev.words + count * WORDS_PER_LINE,
-        seconds: prev.seconds,
-      }));
-    },
-    [generator],
-  );
-
-  // First render is shared with the server; the opening lines arrive once running starts.
   useEffect(() => {
-    if (!running || seeded.current) return;
-    seeded.current = true;
-    push(SEED_LINES);
-  }, [push, running]);
+    // Persist the connection id per tab so a reload reclaims the same seat.
+    let connId = sessionStorage.getItem("ws_connId");
+    if (!connId) {
+      connId = crypto.randomUUID();
+      sessionStorage.setItem("ws_connId", connId);
+    }
 
-  // 100 lines/sec, emitted in 10-line bursts so the feed stays smooth on mobile.
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(() => push(LINES_PER_TICK), TICK_MS);
-    return () => clearInterval(timer);
-  }, [running, push]);
+    const room = base44.actors.WordStream(ROOM_ID).connect({ id: connId });
+    const sub = room.subscribe((msg) => {
+      if (msg.type === "recent") {
+        setLines(Array.isArray(msg.lines) ? msg.lines.slice(0, MAX_VISIBLE_LINES) : []);
+      } else if (msg.type === "lines") {
+        const fresh = Array.isArray(msg.lines) ? msg.lines : [];
+        setLines((prev) => fresh.slice().reverse().concat(prev).slice(0, MAX_VISIBLE_LINES));
+      }
+    });
 
-  // Independent run-time clock so it stays accurate at any rate.
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(
-      () => setStats((prev) => ({ ...prev, seconds: prev.seconds + 1 })),
-      1000,
-    );
-    return () => clearInterval(timer);
-  }, [running]);
+    return () => {
+      sub.unsubscribe();
+      room.close();
+    };
+  }, []);
 
-  return { lines, stats };
+  return { lines };
 }
