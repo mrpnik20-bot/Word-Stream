@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { FileText, UploadCloud, CheckCircle2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { createLineGenerator } from "@/lib/lineGenerator";
@@ -52,7 +53,7 @@ export default function UploadGate({ onComplete }) {
         setProgress(100);
         setStatus("done");
         setPublicUrl(res.file_url || null);
-        setTimeout(onComplete, 650);
+        if (onComplete) setTimeout(onComplete, 650);
       } catch (e) {
         if (cancelled) return;
         done.current = true;
@@ -95,7 +96,9 @@ export default function UploadGate({ onComplete }) {
               টেক্সট ফাইল · স্বয়ংক্রিয় আপলোড
             </p>
             <p className="mt-1 font-serif text-sm italic text-muted-foreground">
-              {status === "done" ? "আপলোড সম্পন্ন — স্ট্রিম শুরু হচ্ছে" : "ফাইল আপলোড হচ্ছে…"}
+              {status === "done"
+                ? onComplete ? "আপলোড সম্পন্ন — স্ট্রিম শুরু হচ্ছে" : "আপলোড সম্পন্ন"
+                : status === "error" ? "ফাইল আপলোড ব্যর্থ হয়েছে" : "ফাইল আপলোড হচ্ছে…"}
             </p>
           </div>
 
@@ -133,13 +136,19 @@ export default function UploadGate({ onComplete }) {
             <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
               {status === "done" ? "PUBLIC URL প্রস্তুত" : "UPLOADING"}
             </span>
-            <span
-              className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 font-serif text-sm font-medium text-accent-foreground"
-              aria-live="polite"
-            >
-              <UploadCloud className="h-4 w-4" aria-hidden />
-              {label}
-            </span>
+            {status === "done" && !onComplete ? (
+              <Link to="/" className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 font-serif text-sm font-medium text-accent-foreground">
+                স্ট্রিম খুলুন
+              </Link>
+            ) : (
+              <span
+                className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 font-serif text-sm font-medium text-accent-foreground"
+                aria-live="polite"
+              >
+                <UploadCloud className="h-4 w-4" aria-hidden />
+                {label}
+              </span>
+            )}
           </div>
         </div>
 
