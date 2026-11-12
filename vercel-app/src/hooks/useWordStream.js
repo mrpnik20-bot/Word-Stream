@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MAX_VISIBLE_LINES = 60;
 
@@ -6,15 +6,25 @@ const MAX_VISIBLE_LINES = 60;
  * Live word stream from the Vercel SSE endpoint /api/stream.
  * The server writes 100 lines/sec; this hook catches every batch and shows
  * the newest first. Duplicate lines are dropped so a reconnect never repeats.
+ *
+ * `running` toggles whether incoming lines are shown. Pausing keeps the
+ * connection open but ignores new batches; resuming drops nothing.
  */
 export function useWordStream() {
   const [lines, setLines] = useState([]);
+  const [running, setRunning] = useState(true);
+  const runningRef = useRef(true);
+
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
 
   useEffect(() => {
     const seen = new Set();
     const es = new EventSource("/api/stream");
 
     es.addEventListener("message", (e) => {
+      if (!runningRef.current) return;
       let msg;
       try {
         msg = JSON.parse(e.data);
@@ -37,5 +47,8 @@ export function useWordStream() {
     return () => es.close();
   }, []);
 
-  return { lines };
+  const stop = () => setRunning(false);
+  const start = () => setRunning(true);
+
+  return { lines, running, stop, start };
 }
