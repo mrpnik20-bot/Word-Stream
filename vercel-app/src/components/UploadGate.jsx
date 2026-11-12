@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, UploadCloud, CheckCircle2 } from "lucide-react";
-import { createLineGenerator } from "@/lib/lineGenerator";
+import { FileText, CheckCircle2, Send, AlertCircle } from "lucide-react";
 
-// The file the agent "uploads". Vercel has no Base44 storage, so the upload is
-// purely visual — it builds the file in memory to look real, then reveals the stream.
-const FILE_NAME = "chronos_stream_0001.txt";
-const FILE_LINES = 500;
-const UPLOAD_DURATION = 2200;
+const FILE_NAME = "chronos_stream_100000.txt";
+const TOTAL_LINES = 100000;
 
-export default function UploadGate({ onComplete }) {
-  const [status, setStatus] = useState("uploading"); // uploading | done
+/**
+ * Builds the 100,000-line file on the server and sends it to a Telegram bot.
+ * The card looks like a real upload and shows each phase: generating →
+ * sending to Telegram → done (or error). The stream is not started.
+ */
+export default function UploadGate() {
+  const [phase, setPhase] = useState("working"); // working | done | error
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState("");
   const raf = useRef(0);
   const done = useRef(false);
 
@@ -18,41 +20,49 @@ export default function UploadGate({ onComplete }) {
     let cancelled = false;
     const start = performance.now();
 
-    // Build the file in memory so the gate feels like a real upload.
-    const gen = createLineGenerator();
-    const lines = [];
-    for (let i = 0; i < FILE_LINES; i += 1) {
-      const l = gen.next();
-      lines.push(`${String(l.id).padStart(6, "0")}  ${l.words.join(" ")}  #${l.hash}`);
-    }
-    // eslint-disable-next-line no-unused-vars
-    const _blob = new File([lines.join("\n")], FILE_NAME, { type: "text/plain" });
-
+    // Ease toward 90% while the server works, then snap to 100% on success.
     const tick = (now) => {
       if (cancelled) return;
-      const pct = Math.min(90, ((now - start) / UPLOAD_DURATION) * 90 + 4);
+      const pct = Math.min(90, ((now - start) / 14000) * 90 + 3);
       setProgress(pct);
       if (!done.current) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
 
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      done.current = true;
-      setProgress(100);
-      setStatus("done");
-      setTimeout(onComplete, 650);
-    }, UPLOAD_DURATION);
+    (async () => {
+      try {
+        const res = await fetch("/api/upload", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || !data.ok) {
+          done.current = true;
+          setPhase("error");
+          setError(data.error || `আপলোড ব্যর্থ (${res.status})`);
+          return;
+        }
+        done.current = true;
+        setProgress(100);
+        setPhase("done");
+      } catch (e) {
+        if (cancelled) return;
+        done.current = true;
+        setPhase("error");
+        setError(e?.message || "আপলোড ব্যর্থ হয়েছে");
+      }
+    })();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf.current);
-      clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const label = status === "done" ? "সম্পন্ন" : "আপলোড হচ্ছে…";
+  const heading =
+    phase === "done"
+      ? "টেলিগ্রামে পাঠানো সম্পন্ন"
+      : phase === "error"
+        ? "আপলোড ব্যর্থ"
+        : "ফাইল তৈরি ও টেলিগ্রামে পাঠানো হচ্ছে";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
@@ -61,20 +71,24 @@ export default function UploadGate({ onComplete }) {
           <h2 className="mb-5 font-serif text-xl font-medium text-foreground">ফাইল আপলোড</h2>
 
           <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-secondary/40 px-5 py-10 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent">
-              {status === "done" ? (
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-xl ${
+                phase === "error" ? "bg-destructive/10 text-destructive" : "bg-accent/10 text-accent"
+              }`}
+            >
+              {phase === "done" ? (
                 <CheckCircle2 className="h-6 w-6" aria-hidden />
+              ) : phase === "error" ? (
+                <AlertCircle className="h-6 w-6" aria-hidden />
               ) : (
                 <FileText className="h-6 w-6" aria-hidden />
               )}
             </div>
             <p className="mt-1 truncate font-mono text-xs text-foreground">{FILE_NAME}</p>
             <p className="font-mono text-[10px] text-muted-foreground/80">
-              টেক্সট ফাইল · স্বয়ংক্রিয় আপলোড
+              টেক্সট ফাইল · {TOTAL_LINES.toLocaleString("en-US")} লাইন
             </p>
-            <p className="mt-1 font-serif text-sm italic text-muted-foreground">
-              {status === "done" ? "আপলোড সম্পন্ন — স্ট্রিম শুরু হচ্ছে" : "ফাইল আপলোড হচ্ছে…"}
-            </p>
+            <p className="mt-1 font-serif text-sm italic text-muted-foreground">{heading}</p>
           </div>
 
           <div className="mt-4 rounded-lg border border-border bg-background p-3">
@@ -85,7 +99,11 @@ export default function UploadGate({ onComplete }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-serif text-sm font-medium text-foreground">{FILE_NAME}</p>
                 <p className="font-mono text-[10px] text-muted-foreground/80">
-                  পাবলিক স্টোরেজে
+                  {phase === "done"
+                    ? "টেলিগ্রাম বটে পাঠানো হয়েছে"
+                    : phase === "error"
+                      ? "আপলোড ব্যর্থ"
+                      : "সার্ভারে তৈরি হচ্ছে · টেলিগ্রামে যাচ্ছে"}
                 </p>
               </div>
             </div>
@@ -97,21 +115,36 @@ export default function UploadGate({ onComplete }) {
                 />
               </div>
               <span className="w-14 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
-                {status === "done" ? "Done" : `${Math.round(progress)}%`}
+                {phase === "done" ? "Done" : phase === "error" ? "Err" : `${Math.round(progress)}%`}
               </span>
             </div>
+            {error && <p className="mt-2 font-mono text-[10px] text-destructive">{error}</p>}
           </div>
 
           <div className="mt-5 flex items-center justify-between">
             <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
-              {status === "done" ? "PUBLIC URL প্রস্তুত" : "UPLOADING"}
+              {phase === "done" ? "টেলিগ্রামে সংরক্ষিত" : phase === "error" ? "ব্যর্থ" : "UPLOADING"}
             </span>
             <span
               className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 font-serif text-sm font-medium text-accent-foreground"
               aria-live="polite"
             >
-              <UploadCloud className="h-4 w-4" aria-hidden />
-              {label}
+              {phase === "done" ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                  সম্পন্ন
+                </>
+              ) : phase === "error" ? (
+                <>
+                  <AlertCircle className="h-4 w-4" aria-hidden />
+                  পুনঃচেষ্টা করুন
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" aria-hidden />
+                  পাঠানো হচ্ছে…
+                </>
+              )}
             </span>
           </div>
         </div>
