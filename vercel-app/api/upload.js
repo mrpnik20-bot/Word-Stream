@@ -1,8 +1,16 @@
 // Vercel Serverless Function: POST /api/upload?part=N
-// Generates ONE chunk of the 100,000-line file (10,000 lines) and uploads it
-// to a Telegram bot as its own document. Splitting into small parts keeps each
-// request well under Vercel Hobby's 10s timeout. The client calls this once
-// per part (0..9) sequentially.
+// Sends ONE part of the 100,000-line file FROM the user's personal Telegram
+// account TO their bot, using MTProto (gramjs userbot). Each part is a separate
+// request + upload so every call finishes well under Vercel Hobby's 10s limit.
+//
+// Required Vercel env vars: TG_API_ID, TG_API_HASH, TG_SESSION, TG_BOT
+//   TG_BOT = bot username (with or without @) the account sends to.
+//   The account must have /start-ed the bot at least once.
+import { TelegramClient } from "telegram";
+import { StringSession } from "telegram/sessions";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import { WORDS } from "../src/lib/wordBank.js";
 
 export const config = { maxDuration: 60 };
@@ -29,56 +37,64 @@ export default async function handler(req, res) {
   const part = Math.max(0, parseInt(url.searchParams.get("part") || "0", 10) || 0);
   const totalParts = Math.ceil(TOTAL_LINES / PART_LINES);
 
-  // eslint-disable-next-line no-undef
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  // eslint-disable-next-line no-undef
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) {
+  /* eslint-disable no-undef */
+  const apiId = parseInt(process.env.TG_API_ID, 10);
+  const apiHash = process.env.TG_API_HASH;
+  const sessionStr = process.env.TG_SESSION;
+  const bot = (process.env.TG_BOT || "").trim();
+  if (!apiId || !apiHash || !sessionStr || !bot) {
     return res.status(500).json({
       ok: false,
-      error: "TELEGRAM_BOT_TOKEN বা TELEGRAM_CHAT_ID Vercel-এ সেট করা নেই",
+      error: "TG_API_ID / TG_API_HASH / TG_SESSION / TG_BOT Vercel-এ সেট করা নেই",
     });
   }
 
+  // Build this part's lines.
+  const start = part * PART_LINES;
+  const end = Math.min(start + PART_LINES, TOTAL_LINES);
+  const lines = new Array(end - start);
+  for (let i = start; i < end; i += 1) {
+    const words = new Array(WORDS_PER_LINE);
+    for (let j = 0; j < WORDS_PER_LINE; j += 1) {
+      words[j] = WORDS[Math.floor(Math.random() * WORDS.length)];
+    }
+    const joined = words.join(" ");
+    lines[i - start] = `${String(i + 1).padStart(6, "0")}  ${joined}  #${hashLine(joined)}`;
+  }
+  const text = lines.join("\n");
+  const fileName = `chronos_part_${String(part + 1).padStart(2, "0")}.txt`;
+  const tmp = path.join(os.tmpdir(), fileName);
+  fs.writeFileSync(tmp, text);
+
+  let client;
   try {
-    const start = part * PART_LINES;
-    const end = Math.min(start + PART_LINES, TOTAL_LINES);
-    const lines = new Array(end - start);
-    for (let i = start; i < end; i += 1) {
-      const words = new Array(WORDS_PER_LINE);
-      for (let j = 0; j < WORDS_PER_LINE; j += 1) {
-        words[j] = WORDS[Math.floor(Math.random() * WORDS.length)];
-      }
-      const joined = words.join(" ");
-      lines[i - start] = `${String(i + 1).padStart(6, "0")}  ${joined}  #${hashLine(joined)}`;
-    }
-    const text = lines.join("\n");
-    const fileName = `chronos_part_${String(part + 1).padStart(2, "0")}.txt`;
-    const file = new Blob([text], { type: "text/plain" });
-
-    const form = new FormData();
-    form.append("chat_id", chatId);
-    form.append("document", file, fileName);
-    form.append(
-      "caption",
-      `Lexical Chronos — part ${part + 1}/${totalParts} (${lines.length.toLocaleString("en-US")} lines)`
-    );
-
-    // eslint-disable-next-line no-undef
-    const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
-      method: "POST",
-      body: form,
+    client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+      connectionRetries: 3,
+      retryDelay: 500,
     });
-    const tgData = await tgRes.json().catch(() => ({}));
-    if (!tgRes.ok || !tgData.ok) {
-      return res.status(502).json({
-        ok: false,
-        error: tgData.description || "Telegram আপলোড ব্যর্থ",
-        part,
-      });
-    }
+    await client.connect();
+    if (!client.connected) throw new Error("MTProto কানেকশন ব্যর্থ");
+
+    await client.sendFile(bot, {
+      file: tmp,
+      caption: `Lexical Chronos — part ${part + 1}/${totalParts} (${lines.length.toLocaleString("en-US")} lines)`,
+      forceDocument: true,
+    });
     return res.status(200).json({ ok: true, part, totalParts, lines: lines.length, file: fileName });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || "অজানা ত্রুটি", part });
+    return res.status(500).json({ ok: false, error: e?.message || "পাঠাতে ব্যর্থ", part });
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+    if (client) {
+      try {
+        await client.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
   }
 }
