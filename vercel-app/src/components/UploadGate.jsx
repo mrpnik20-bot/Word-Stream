@@ -1,68 +1,58 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, CheckCircle2, Send, AlertCircle } from "lucide-react";
 
-const FILE_NAME = "chronos_stream_100000.txt";
 const TOTAL_LINES = 100000;
+const PART_LINES = 10000;
+const TOTAL_PARTS = Math.ceil(TOTAL_LINES / PART_LINES);
 
 /**
- * Builds the 100,000-line file on the server and sends it to a Telegram bot.
- * The card looks like a real upload and shows each phase: generating →
- * sending to Telegram → done (or error). The stream is not started.
+ * Sends the file to Telegram in small parts (10 × 10,000 lines). Each part is
+ * its own server request + Telegram document, so every request finishes fast
+ * and stays clear of Vercel Hobby's 10s timeout. The stream is not started.
  */
 export default function UploadGate() {
   const [phase, setPhase] = useState("working"); // working | done | error
-  const [progress, setProgress] = useState(0);
+  const [current, setCurrent] = useState(0); // parts completed
   const [error, setError] = useState("");
-  const raf = useRef(0);
-  const done = useRef(false);
+  const cancelled = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const start = performance.now();
-
-    // Ease toward 90% while the server works, then snap to 100% on success.
-    const tick = (now) => {
-      if (cancelled) return;
-      const pct = Math.min(90, ((now - start) / 14000) * 90 + 3);
-      setProgress(pct);
-      if (!done.current) raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-
+    cancelled.current = false;
     (async () => {
-      try {
-        const res = await fetch("/api/upload", { method: "POST" });
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!res.ok || !data.ok) {
-          done.current = true;
+      for (let part = 0; part < TOTAL_PARTS; part += 1) {
+        if (cancelled.current) return;
+        try {
+          const res = await fetch(`/api/upload?part=${part}`, { method: "POST" });
+          const data = await res.json().catch(() => ({}));
+          if (cancelled.current) return;
+          if (!res.ok || !data.ok) {
+            setPhase("error");
+            setError(data.error || `পার্ট ${part + 1} আপলোড ব্যর্থ (${res.status})`);
+            return;
+          }
+          setCurrent(part + 1);
+        } catch (e) {
+          if (cancelled.current) return;
           setPhase("error");
-          setError(data.error || `আপলোড ব্যর্থ (${res.status})`);
+          setError(e?.message || `পার্ট ${part + 1} আপলোড ব্যর্থ`);
           return;
         }
-        done.current = true;
-        setProgress(100);
-        setPhase("done");
-      } catch (e) {
-        if (cancelled) return;
-        done.current = true;
-        setPhase("error");
-        setError(e?.message || "আপলোড ব্যর্থ হয়েছে");
       }
+      if (cancelled.current) return;
+      setPhase("done");
     })();
-
     return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf.current);
+      cancelled.current = true;
     };
   }, []);
 
+  const progress = Math.round((current / TOTAL_PARTS) * 100);
   const heading =
     phase === "done"
-      ? "টেলিগ্রামে পাঠানো সম্পন্ন"
+      ? "টেলিগ্রামে সব পার্ট পাঠানো সম্পন্ন"
       : phase === "error"
         ? "আপলোড ব্যর্থ"
-        : "ফাইল তৈরি ও টেলিগ্রামে পাঠানো হচ্ছে";
+        : `পার্ট ${Math.min(current + 1, TOTAL_PARTS)}/${TOTAL_PARTS} টেলিগ্রামে পাঠানো হচ্ছে…`;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
@@ -84,9 +74,9 @@ export default function UploadGate() {
                 <FileText className="h-6 w-6" aria-hidden />
               )}
             </div>
-            <p className="mt-1 truncate font-mono text-xs text-foreground">{FILE_NAME}</p>
+            <p className="mt-1 font-mono text-xs text-foreground">chronos_part_01.txt … chronos_part_10.txt</p>
             <p className="font-mono text-[10px] text-muted-foreground/80">
-              টেক্সট ফাইল · {TOTAL_LINES.toLocaleString("en-US")} লাইন
+              {TOTAL_PARTS} ফাইল · {TOTAL_LINES.toLocaleString("en-US")} লাইন
             </p>
             <p className="mt-1 font-serif text-sm italic text-muted-foreground">{heading}</p>
           </div>
@@ -97,25 +87,27 @@ export default function UploadGate() {
                 TXT
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-serif text-sm font-medium text-foreground">{FILE_NAME}</p>
+                <p className="truncate font-serif text-sm font-medium text-foreground">
+                  পার্ট {Math.min(current + (phase === "done" ? 0 : 1), TOTAL_PARTS)} / {TOTAL_PARTS}
+                </p>
                 <p className="font-mono text-[10px] text-muted-foreground/80">
                   {phase === "done"
-                    ? "টেলিগ্রাম বটে পাঠানো হয়েছে"
+                    ? `${TOTAL_PARTS}টি ফাইল টেলিগ্রামে পাঠানো হয়েছে`
                     : phase === "error"
                       ? "আপলোড ব্যর্থ"
-                      : "সার্ভারে তৈরি হচ্ছে · টেলিগ্রামে যাচ্ছে"}
+                      : `পাঠানো হয়েছে ${current}/${TOTAL_PARTS}`}
                 </p>
               </div>
             </div>
             <div className="mt-3 flex items-center gap-3">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-border/60">
                 <div
-                  className="h-full bg-accent transition-[width] duration-100 ease-linear"
+                  className="h-full bg-accent transition-[width] duration-200 ease-linear"
                   style={{ width: `${progress}%` }}
                 />
               </div>
               <span className="w-14 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
-                {phase === "done" ? "Done" : phase === "error" ? "Err" : `${Math.round(progress)}%`}
+                {phase === "done" ? "Done" : phase === "error" ? "Err" : `${progress}%`}
               </span>
             </div>
             {error && <p className="mt-2 font-mono text-[10px] text-destructive">{error}</p>}
@@ -137,7 +129,7 @@ export default function UploadGate() {
               ) : phase === "error" ? (
                 <>
                   <AlertCircle className="h-4 w-4" aria-hidden />
-                  পুনঃচেষ্টা করুন
+                  পুনঃচেষ্টা
                 </>
               ) : (
                 <>
