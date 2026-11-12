@@ -7,21 +7,20 @@ const MAX_VISIBLE_LINES = 60;
  * The server writes 100 lines/sec; this hook catches every batch and shows
  * the newest first. Duplicate lines are dropped so a reconnect never repeats.
  *
- * `running` toggles whether incoming lines are shown. Pausing keeps the
- * connection open but ignores new batches; resuming drops nothing.
+ * The stream starts stopped. Start opens a connection; Stop closes it
+ * immediately and prevents queued batches from changing the visible feed.
  */
 export function useWordStream() {
   const [lines, setLines] = useState([]);
-  const [running, setRunning] = useState(true);
-  const runningRef = useRef(true);
+  const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
+  const sourceRef = useRef(null);
+  const seen = useRef(new Set());
 
   useEffect(() => {
-    runningRef.current = running;
-  }, [running]);
-
-  useEffect(() => {
-    const seen = new Set();
+    if (!running) return;
     const es = new EventSource("/api/stream");
+    sourceRef.current = es;
 
     es.addEventListener("message", (e) => {
       if (!runningRef.current) return;
@@ -35,20 +34,32 @@ export function useWordStream() {
 
       const fresh = msg.lines.filter((line) => {
         const key = line.words.join(" ");
-        if (seen.has(key)) return false;
-        seen.add(key);
+        if (seen.current.has(key)) return false;
+        seen.current.add(key);
         return true;
       });
       if (fresh.length === 0) return;
 
-      setLines((prev) => fresh.slice().reverse().concat(prev).slice(0, MAX_VISIBLE_LINES));
+      setLines((prev) => runningRef.current
+        ? fresh.slice().reverse().concat(prev).slice(0, MAX_VISIBLE_LINES)
+        : prev);
     });
 
-    return () => es.close();
-  }, []);
+    return () => {
+      es.close();
+      if (sourceRef.current === es) sourceRef.current = null;
+    };
+  }, [running]);
 
-  const stop = () => setRunning(false);
-  const start = () => setRunning(true);
+  const stop = () => {
+    runningRef.current = false;
+    sourceRef.current?.close();
+    setRunning(false);
+  };
+  const start = () => {
+    runningRef.current = true;
+    setRunning(true);
+  };
 
   return { lines, running, stop, start };
 }

@@ -21,7 +21,7 @@ export default function WordStream({ lines, running, onStop, onStart }) {
           <span className="ml-auto flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <span className={`h-1.5 w-1.5 rounded-full bg-accent ${running ? "live-dot" : "opacity-30"}`} aria-hidden />
-              {running ? "READING" : "PAUSED"}
+              {running ? "READING" : "STOPPED"}
             </span>
             {running ? (
               <button
@@ -53,7 +53,7 @@ export default function WordStream({ lines, running, onStop, onStart }) {
         {lines.length === 0
           ? null
           : lines.map((line, i) => (
-              <StreamLine key={line.id} line={line} newest={i === 0} />
+              <StreamLine key={line.words.join(" ")} line={line} newest={i === 0} />
             ))}
       </div>
     </div>
