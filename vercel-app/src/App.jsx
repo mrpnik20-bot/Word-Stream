@@ -5,13 +5,13 @@ import UploadGate from "@/components/UploadGate";
 
 export default function App() {
   const [uploaded, setUploaded] = useState(false);
-  const { lines } = useWordStream();
+  const { lines, running, stop, start } = useWordStream();
 
   if (!uploaded) return <UploadGate onComplete={() => setUploaded(true)} />;
 
   return (
     <div className="min-h-screen bg-background">
-      <WordStream lines={lines} />
+      <WordStream lines={lines} running={running} onStop={stop} onStart={start} />
     </div>
   );
 }
